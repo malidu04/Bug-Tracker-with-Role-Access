@@ -2,38 +2,25 @@ const Comment = require('../models/Comment');
 const Bug = require('../models/Bug');
 const ErrorResponse = require('../utils/ErrorResponse');
 const asyncHandler = require('../middleware/async');
-const { notifyUsers } = require('../middleware/notify');
 
 // @desc    Get comments for a bug
 // @route   GET /api/v1/bugs/:bugId/comments
 // @access  Private
 exports.getComments = asyncHandler(async (req, res, next) => {
-  // Check if bug exists
-  const bug = await Bug.findById(req.params.bugId);
-
-  if (!bug) {
-    return next(
-      new ErrorResponse(`Bug not found with id of ${req.params.bugId}`, 404)
+  if (req.params.bugId) {
+    const comments = await Comment.find({ bug: req.params.bugId }).populate(
+      'user',
+      'name email'
     );
+
+    return res.status(200).json({
+      success: true,
+      count: comments.length,
+      data: comments,
+    });
+  } else {
+    res.status(200).json(res.advancedResults);
   }
-
-  // Check if user has access to the bug
-  if (req.user.role !== 'admin' && 
-      bug.createdBy.toString() !== req.user.id && 
-      (!bug.assignedTo || bug.assignedTo.toString() !== req.user.id)) {
-    return next(
-      new ErrorResponse(`Not authorized to access this bug's comments`, 401)
-    );
-  }
-
-  const comments = await Comment.find({ bug: req.params.bugId })
-    .populate('user', 'name avatar');
-
-  res.status(200).json({
-    success: true,
-    count: comments.length,
-    data: comments
-  });
 });
 
 // @desc    Add comment to bug
@@ -43,66 +30,55 @@ exports.addComment = asyncHandler(async (req, res, next) => {
   req.body.bug = req.params.bugId;
   req.body.user = req.user.id;
 
-  // Check if bug exists
   const bug = await Bug.findById(req.params.bugId);
 
   if (!bug) {
     return next(
-      new ErrorResponse(`Bug not found with id of ${req.params.bugId}`, 404)
-    );
-  }
-
-  // Check if user has access to the bug
-  if (req.user.role !== 'admin' && 
-      bug.createdBy.toString() !== req.user.id && 
-      (!bug.assignedTo || bug.assignedTo.toString() !== req.user.id)) {
-    return next(
-      new ErrorResponse(`Not authorized to comment on this bug`, 401)
+      new ErrorResponse(`No bug with the id of ${req.params.bugId}`, 404)
     );
   }
 
   const comment = await Comment.create(req.body);
 
-  // Check for mentions in comment
-  const mentionRegex = /@([a-zA-Z0-9_]+)/g;
-  let mentions = [];
-  let match;
-  
-  while ((match = mentionRegex.exec(req.body.text)) !== null) {
-    mentions.push(match[1]);
-  }
+  // Notify bug creator and assignee
+  if (req.notifyUsers) {
+    const usersToNotify = new Set();
+    if (bug.createdBy) usersToNotify.add(bug.createdBy.toString());
+    if (bug.assignedTo) usersToNotify.add(bug.assignedTo.toString());
+    
+    // Don't notify the comment author
+    usersToNotify.delete(req.user.id.toString());
 
-  // Notify mentioned users and bug assignee/creator
-  await notifyUsers(
-    req.user.id,
-    `New comment on bug: ${bug.title}`,
-    bug._id,
-    'comment',
-    'create',
-    bug.project,
-    mentions
-  );
+    if (usersToNotify.size > 0) {
+      await req.notifyUsers(
+        Array.from(usersToNotify),
+        `New comment on bug: ${bug.title}`,
+        'comment',
+        comment._id
+      );
+    }
+  }
 
   res.status(201).json({
     success: true,
-    data: comment
+    data: comment,
   });
 });
 
 // @desc    Update comment
 // @route   PUT /api/v1/comments/:id
-// @access  Private (Comment owner or admin)
+// @access  Private
 exports.updateComment = asyncHandler(async (req, res, next) => {
   let comment = await Comment.findById(req.params.id);
 
   if (!comment) {
     return next(
-      new ErrorResponse(`Comment not found with id of ${req.params.id}`, 404)
+      new ErrorResponse(`No comment with the id of ${req.params.id}`, 404)
     );
   }
 
-  // Check if user is authorized to update the comment
-  if (req.user.role !== 'admin' && comment.user.toString() !== req.user.id) {
+  // Make sure comment belongs to user or user is admin
+  if (comment.user.toString() !== req.user.id && req.user.role !== 'admin') {
     return next(
       new ErrorResponse(`Not authorized to update this comment`, 401)
     );
@@ -110,38 +86,38 @@ exports.updateComment = asyncHandler(async (req, res, next) => {
 
   comment = await Comment.findByIdAndUpdate(req.params.id, req.body, {
     new: true,
-    runValidators: true
+    runValidators: true,
   });
 
   res.status(200).json({
     success: true,
-    data: comment
+    data: comment,
   });
 });
 
 // @desc    Delete comment
 // @route   DELETE /api/v1/comments/:id
-// @access  Private (Comment owner or admin)
+// @access  Private
 exports.deleteComment = asyncHandler(async (req, res, next) => {
   const comment = await Comment.findById(req.params.id);
 
   if (!comment) {
     return next(
-      new ErrorResponse(`Comment not found with id of ${req.params.id}`, 404)
+      new ErrorResponse(`No comment with the id of ${req.params.id}`, 404)
     );
   }
 
-  // Check if user is authorized to delete the comment
-  if (req.user.role !== 'admin' && comment.user.toString() !== req.user.id) {
+  // Make sure comment belongs to user or user is admin
+  if (comment.user.toString() !== req.user.id && req.user.role !== 'admin') {
     return next(
       new ErrorResponse(`Not authorized to delete this comment`, 401)
     );
   }
 
-  await comment.remove();
+  await comment.deleteOne();
 
   res.status(200).json({
     success: true,
-    data: {}
+    data: {},
   });
 });

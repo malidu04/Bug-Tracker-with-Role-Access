@@ -7,12 +7,13 @@ const asyncHandler = require('../middleware/async');
 // @access  Private
 exports.getNotifications = asyncHandler(async (req, res, next) => {
   const notifications = await Notification.find({ user: req.user.id })
-    .sort('-createdAt');
+    .sort('-createdAt')
+    .limit(20);
 
   res.status(200).json({
     success: true,
     count: notifications.length,
-    data: notifications
+    data: notifications,
   });
 });
 
@@ -22,7 +23,7 @@ exports.getNotifications = asyncHandler(async (req, res, next) => {
 exports.markAsRead = asyncHandler(async (req, res, next) => {
   const notification = await Notification.findOneAndUpdate(
     { _id: req.params.id, user: req.user.id },
-    { read: true },
+    { isRead: true },
     { new: true }
   );
 
@@ -34,7 +35,7 @@ exports.markAsRead = asyncHandler(async (req, res, next) => {
 
   res.status(200).json({
     success: true,
-    data: notification
+    data: notification,
   });
 });
 
@@ -43,33 +44,12 @@ exports.markAsRead = asyncHandler(async (req, res, next) => {
 // @access  Private
 exports.markAllAsRead = asyncHandler(async (req, res, next) => {
   await Notification.updateMany(
-    { user: req.user.id, read: false },
-    { read: true }
+    { user: req.user.id, isRead: false },
+    { isRead: true }
   );
 
   res.status(200).json({
     success: true,
-    data: {}
-  });
-});
-
-// @desc    Delete notification
-// @route   DELETE /api/v1/notifications/:id
-// @access  Private
-exports.deleteNotification = asyncHandler(async (req, res, next) => {
-  const notification = await Notification.findOneAndDelete({
-    _id: req.params.id,
-    user: req.user.id
-  });
-
-  if (!notification) {
-    return next(
-      new ErrorResponse(`Notification not found with id of ${req.params.id}`, 404)
-    );
-  }
-
-  res.status(200).json({
-    success: true,
-    data: {}
+    data: {},
   });
 });

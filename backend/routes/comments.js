@@ -1,21 +1,18 @@
 const express = require('express');
+const router = express.Router();
 const {
   getComments,
   addComment,
   updateComment,
-  deleteComment
+  deleteComment,
 } = require('../controllers/comments');
 const { protect } = require('../middleware/auth');
 
-const router = express.Router({ mergeParams: true });
-
-router
-  .route('/')
+router.route('/')
   .get(protect, getComments)
   .post(protect, addComment);
 
-router
-  .route('/:id')
+router.route('/:id')
   .put(protect, updateComment)
   .delete(protect, deleteComment);
 

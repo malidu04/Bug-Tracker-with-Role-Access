@@ -1,9 +1,13 @@
-const socket = require('../config/socket');
+const { getIO } = require('../config/socket');
 
-// Send real-time notification via WebSocket
-exports.sendSocketNotification = (userId, data) => {
-  const io = socket.getIO();
-  if (io) {
-    io.to(`user_${userId}`).emit('notification', data);
-  }
+const emitToRoom = (room, event, data) => {
+  const io = getIO();
+  io.to(room).emit(event, data);
 };
+
+const emitToAll = (event, data) => {
+  const io = getIO();
+  io.emit(event, data);
+};
+
+module.exports = { emitToRoom, emitToAll };

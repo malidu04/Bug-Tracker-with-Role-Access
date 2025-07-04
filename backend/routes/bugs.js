@@ -1,30 +1,33 @@
 const express = require('express');
+const router = express.Router();
 const {
   getBugs,
   getBug,
   createBug,
   updateBug,
   deleteBug,
-  uploadAttachment
 } = require('../controllers/bugs');
 const { protect, authorize } = require('../middleware/auth');
-const upload = require('../utils/upload');
+const advancedResults = require('../middleware/advancedResults');
+const Bug = require('../models/Bug');
 
-const router = express.Router({ mergeParams: true });
+// Re-route into other resource routers
+router.use('/:bugId/comments', require('./comments'));
+router.use('/:bugId/history', require('./history'));
 
-router
-  .route('/')
-  .get(protect, getBugs)
-  .post(protect, authorize('qa', 'admin', 'project-manager'), createBug);
+router.route('/')
+  .get(
+    advancedResults(Bug, [
+      { path: 'createdBy', select: 'name email' },
+      { path: 'assignedTo', select: 'name email' },
+    ]),
+    getBugs
+  )
+  .post(protect, authorize('admin', 'tester'), createBug);
 
-router
-  .route('/:id')
-  .get(protect, getBug)
-  .put(protect, authorize('qa', 'admin', 'project-manager'), updateBug)
-  .delete(protect, authorize('qa', 'admin', 'project-manager'), deleteBug);
-
-router
-  .route('/:id/attachment')
-  .put(protect, authorize('qa', 'admin', 'project-manager'), upload.single('file'), uploadAttachment);
+router.route('/:id')
+  .get(getBug)
+  .put(protect, updateBug)
+  .delete(protect, authorize('admin'), deleteBug);
 
 module.exports = router;

@@ -1,68 +1,36 @@
 const Notification = require('../models/Notification');
-const User = require('../models/User');
-const { sendEmail } = require('../utils/email');
-const { sendSocketNotification } = require('../utils/realtime');
+const { getIO } = require('../config/socket');
+const ErrorResponse = require('../utils/ErrorResponse');
+const sendEmail = require('../utils/email');
 
-// Notify users about changes
-exports.notifyUsers = async (
-  senderId,
-  message,
-  entityId,
-  entityType,
-  action,
-  projectId,
-  mentions = []
-) => {
+exports.notify = async (req, res, next) => {
   try {
-    // Get users to notify (project members, mentioned users, etc.)
-    let usersToNotify = [];
-    
-    // In a real app, you would query project members here
-    // For now, we'll just notify mentioned users
-    if (mentions.length > 0) {
-      const mentionedUsers = await User.find({ 
-        username: { $in: mentions } 
-      }).select('_id');
-      
-      usersToNotify = mentionedUsers.map(user => user._id);
-    }
+    req.notifyUsers = async (userIds, message, relatedEntity, entityId) => {
+      const notifications = userIds.map((userId) => ({
+        user: userId,
+        message,
+        relatedEntity,
+        entityId,
+      }));
 
-    // Don't notify the sender
-    usersToNotify = usersToNotify.filter(userId => userId.toString() !== senderId.toString());
+      const createdNotifications = await Notification.insertMany(notifications);
 
-    // Create notifications
-    const notifications = usersToNotify.map(userId => ({
-      user: userId,
-      message,
-      relatedEntity: entityId,
-      entityType,
-      action
-    }));
-
-    await Notification.insertMany(notifications);
-
-    // Send real-time notifications via WebSocket
-    notifications.forEach(notification => {
-      sendSocketNotification(notification.user.toString(), {
-        type: 'notification',
-        data: notification
+      // Emit socket event to each user
+      const io = getIO();
+      userIds.forEach((userId) => {
+        io.to(userId.toString()).emit('notification', {
+          message,
+          relatedEntity,
+          entityId,
+        });
       });
-    });
 
-    // Send email notifications
-    const usersWithEmail = await User.find({
-      _id: { $in: usersToNotify },
-      emailNotifications: true
-    }).select('email');
+      // TODO: Implement email notifications if needed
+      // await sendEmail(...);
+    };
 
-    usersWithEmail.forEach(user => {
-      sendEmail({
-        email: user.email,
-        subject: `Bug Tracker Notification: ${message}`,
-        message: `You have a new notification: ${message}`
-      });
-    });
+    next();
   } catch (err) {
-    console.error('Error notifying users:', err);
+    return next(new ErrorResponse('Error setting up notifications', 500));
   }
 };

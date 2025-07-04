@@ -1,10 +1,7 @@
 const Bug = require('../models/Bug');
-const History = require('../models/History');
-const Notification = require('../models/Notification');
 const ErrorResponse = require('../utils/ErrorResponse');
 const asyncHandler = require('../middleware/async');
-const { createHistory } = require('../middleware/history');
-const { notifyUsers } = require('../middleware/notify');
+const { emitToRoom } = require('../utils/realtime');
 
 // @desc    Get all bugs
 // @route   GET /api/v1/bugs
@@ -13,36 +10,16 @@ const { notifyUsers } = require('../middleware/notify');
 exports.getBugs = asyncHandler(async (req, res, next) => {
   if (req.params.projectId) {
     const bugs = await Bug.find({ project: req.params.projectId })
-      .populate('assignedTo', 'name avatar')
-      .populate('createdBy', 'name avatar');
+      .populate('createdBy', 'name email')
+      .populate('assignedTo', 'name email');
 
     return res.status(200).json({
       success: true,
       count: bugs.length,
-      data: bugs
+      data: bugs,
     });
   } else {
-    // If user is not admin, only show bugs they created or are assigned to
-    let query;
-    if (req.user.role !== 'admin') {
-      query = Bug.find({
-        $or: [
-          { createdBy: req.user.id },
-          { assignedTo: req.user.id }
-        ]
-      });
-    } else {
-      query = Bug.find();
-    }
-
-    const bugs = await query.populate('assignedTo', 'name avatar')
-      .populate('createdBy', 'name avatar');
-
-    res.status(200).json({
-      success: true,
-      count: bugs.length,
-      data: bugs
-    });
+    res.status(200).json(res.advancedResults);
   }
 });
 
@@ -51,22 +28,8 @@ exports.getBugs = asyncHandler(async (req, res, next) => {
 // @access  Private
 exports.getBug = asyncHandler(async (req, res, next) => {
   const bug = await Bug.findById(req.params.id)
-    .populate('assignedTo', 'name avatar')
-    .populate('createdBy', 'name avatar')
-    .populate({
-      path: 'comments',
-      populate: {
-        path: 'user',
-        select: 'name avatar'
-      }
-    })
-    .populate({
-      path: 'history',
-      populate: {
-        path: 'user',
-        select: 'name avatar'
-      }
-    });
+    .populate('createdBy', 'name email')
+    .populate('assignedTo', 'name email');
 
   if (!bug) {
     return next(
@@ -74,121 +37,102 @@ exports.getBug = asyncHandler(async (req, res, next) => {
     );
   }
 
-  // Check if user has access to the bug
-  if (req.user.role !== 'admin' && 
-      bug.createdBy._id.toString() !== req.user.id && 
-      (!bug.assignedTo || bug.assignedTo._id.toString() !== req.user.id)) {
-    return next(
-      new ErrorResponse(`Not authorized to access this bug`, 401)
-    );
-  }
-
   res.status(200).json({
     success: true,
-    data: bug
+    data: bug,
   });
 });
 
 // @desc    Create new bug
-// @route   POST /api/v1/projects/:projectId/bugs
-// @access  Private
-exports.createBug = [
-  asyncHandler(async (req, res, next) => {
-    req.body.createdBy = req.user.id;
-    req.body.project = req.params.projectId;
+// @route   POST /api/v1/bugs
+// @access  Private (admin, tester)
+exports.createBug = asyncHandler(async (req, res, next) => {
+  // Add user to req.body
+  req.body.createdBy = req.user.id;
 
-    const bug = await Bug.create(req.body);
+  const bug = await Bug.create(req.body);
 
-    // Create history entry
-    await createHistory(bug._id, req.user.id, 'create', null, null, bug);
-
-    // Notify project members
-    await notifyUsers(
-      req.user.id,
+  // Notify admins and developers
+  if (req.notifyUsers) {
+    const adminsAndDevs = await User.find({
+      role: { $in: ['admin', 'developer'] },
+    }).select('_id');
+    
+    const userIds = adminsAndDevs.map(user => user._id);
+    await req.notifyUsers(
+      userIds,
       `New bug created: ${bug.title}`,
-      bug._id,
       'bug',
-      'create',
-      req.params.projectId
+      bug._id
     );
+  }
 
-    res.status(201).json({
-      success: true,
-      data: bug
-    });
-  })
-];
+  res.status(201).json({
+    success: true,
+    data: bug,
+  });
+});
 
 // @desc    Update bug
 // @route   PUT /api/v1/bugs/:id
 // @access  Private
-exports.updateBug = [
-  asyncHandler(async (req, res, next) => {
-    let bug = await Bug.findById(req.params.id);
+exports.updateBug = asyncHandler(async (req, res, next) => {
+  let bug = await Bug.findById(req.params.id);
 
-    if (!bug) {
-      return next(
-        new ErrorResponse(`Bug not found with id of ${req.params.id}`, 404)
-      );
-    }
+  if (!bug) {
+    return next(
+      new ErrorResponse(`Bug not found with id of ${req.params.id}`, 404)
+    );
+  }
 
-    // Check if user is authorized to update the bug
-    if (req.user.role !== 'admin' && bug.createdBy.toString() !== req.user.id) {
-      return next(
-        new ErrorResponse(`Not authorized to update this bug`, 401)
-      );
-    }
+  // Make sure user is bug creator, admin or assigned developer
+  if (
+    bug.createdBy.toString() !== req.user.id &&
+    req.user.role !== 'admin' &&
+    (bug.assignedTo && bug.assignedTo.toString() !== req.user.id)
+  ) {
+    return next(
+      new ErrorResponse(
+        `User ${req.user.id} is not authorized to update this bug`,
+        401
+      )
+    );
+  }
 
-    // Check for changes to track in history
-    const changes = {};
-    for (const key in req.body) {
-      if (bug[key] !== req.body[key]) {
-        changes[key] = {
-          oldValue: bug[key],
-          newValue: req.body[key]
-        };
-      }
-    }
+  // Track changes before updating
+  await req.onUpdate(bug);
 
-    bug = await Bug.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true
-    });
+  bug = await Bug.findByIdAndUpdate(req.params.id, req.body, {
+    new: true,
+    runValidators: true,
+  });
 
-    // Create history entries for each change
-    for (const field in changes) {
-      await createHistory(
-        bug._id,
-        req.user.id,
-        'update',
-        field,
-        changes[field].oldValue,
-        changes[field].newValue
-      );
-    }
-
-    // Notify assigned user if assignment changed
-    if (changes.assignedTo) {
-      await notifyUsers(
-        req.user.id,
-        `You've been assigned to bug: ${bug.title}`,
-        bug._id,
+  // Notify relevant users if status or assignee changed
+  if (req.body.status || req.body.assignedTo) {
+    const usersToNotify = new Set();
+    
+    if (bug.createdBy) usersToNotify.add(bug.createdBy.toString());
+    if (bug.assignedTo) usersToNotify.add(bug.assignedTo.toString());
+    
+    if (req.notifyUsers && usersToNotify.size > 0) {
+      await req.notifyUsers(
+        Array.from(usersToNotify),
+        `Bug updated: ${bug.title}`,
         'bug',
-        'assign',
-        bug.project
+        bug._id
       );
     }
+  }
 
-    res.status(200).json({
-      success: true,
-      data: bug
-    });
-  })
-];
+  res.status(200).json({
+    success: true,
+    data: bug,
+  });
+});
 
 // @desc    Delete bug
 // @route   DELETE /api/v1/bugs/:id
-// @access  Private (Admin or creator)
+// @access  Private (admin, creator)
 exports.deleteBug = asyncHandler(async (req, res, next) => {
   const bug = await Bug.findById(req.params.id);
 
@@ -198,92 +142,20 @@ exports.deleteBug = asyncHandler(async (req, res, next) => {
     );
   }
 
-  // Check if user is authorized to delete the bug
-  if (req.user.role !== 'admin' && bug.createdBy.toString() !== req.user.id) {
-    return next(
-      new ErrorResponse(`Not authorized to delete this bug`, 401)
-    );
-  }
-
-  await bug.remove();
-
-  // Create history entry
-  await createHistory(bug._id, req.user.id, 'delete', null, null, null);
-
-  res.status(200).json({
-    success: true,
-    data: {}
-  });
-});
-
-// @desc    Upload attachment for bug
-// @route   PUT /api/v1/bugs/:id/attachment
-// @access  Private
-exports.uploadAttachment = asyncHandler(async (req, res, next) => {
-  const bug = await Bug.findById(req.params.id);
-
-  if (!bug) {
-    return next(
-      new ErrorResponse(`Bug not found with id of ${req.params.id}`, 404)
-    );
-  }
-
-  // Check if user is authorized
-  if (req.user.role !== 'admin' && bug.createdBy.toString() !== req.user.id) {
-    return next(
-      new ErrorResponse(`Not authorized to update this bug`, 401)
-    );
-  }
-
-  if (!req.files) {
-    return next(new ErrorResponse(`Please upload a file`, 400));
-  }
-
-  const file = req.files.file;
-
-  // Check file size
-  if (file.size > process.env.MAX_FILE_UPLOAD) {
+  // Make sure user is bug creator or admin
+  if (bug.createdBy.toString() !== req.user.id && req.user.role !== 'admin') {
     return next(
       new ErrorResponse(
-        `Please upload an image less than ${process.env.MAX_FILE_UPLOAD}`,
-        400
+        `User ${req.user.id} is not authorized to delete this bug`,
+        401
       )
     );
   }
 
-  // Create custom filename
-  file.name = `attachment_${bug._id}${path.parse(file.name).ext}`;
+  await bug.deleteOne();
 
-  file.mv(`${process.env.FILE_UPLOAD_PATH}/${file.name}`, async err => {
-    if (err) {
-      console.error(err);
-      return next(new ErrorResponse(`Problem with file upload`, 500));
-    }
-
-    const attachment = {
-      url: `${req.protocol}://${req.get('host')}/uploads/${file.name}`,
-      name: file.name,
-      type: file.mimetype,
-      size: file.size
-    };
-
-    await Bug.findByIdAndUpdate(req.params.id, {
-      $push: { attachments: attachment }
-    });
-
-    // Create history entry
-    await createHistory(
-      bug._id,
-      req.user.id,
-      'update',
-      'attachments',
-      null,
-      attachment
-    );
-
-    res.status(200).json({
-      success: true,
-      data: attachment
-    });
+  res.status(200).json({
+    success: true,
+    data: {},
   });
 });
