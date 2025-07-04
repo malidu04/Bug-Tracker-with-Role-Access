@@ -1,46 +1,67 @@
 const User = require('../models/User');
-const Bug = require('../models/Bug');
+const ErrorResponse = require('../utils/ErrorResponse');
+const asyncHandler = require('../middleware/async');
 
-//get all users without password
-const getAllUsers = async (req, res) => {
-    try {
-        const users = await User.find().select('-password');
-        res.json(users);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-};
+// @desc    Get all users
+// @route   GET /api/v1/users
+// @access  Private/Admin
+exports.getUsers = asyncHandler(async (req, res, next) => {
+  res.status(200).json(res.advancedResults);
+});
 
-//get single user
-const getUserById = async (req, res) => {
-    try {
-        const user = await User.findById(req.params.id).select('-password');
-        if(!user) {
-            return res.status(404).json({ error: error.message });
-        }
-        res.json(user);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-};
+// @desc    Get single user
+// @route   GET /api/v1/users/:id
+// @access  Private/Admin
+exports.getUser = asyncHandler(async (req, res, next) => {
+  const user = await User.findById(req.params.id);
 
-//update user
-const updateUser = async (req, res) => {
-    const updates = Object.keys(req.body);
-    const allowedUpdates = ['name', 'email', 'password'];
-    const isValidOperation = updates.every(update => allowedUpdates.includes(update));
+  if (!user) {
+    return next(
+      new ErrorResponse(`User not found with id of ${req.params.id}`, 404)
+    );
+  }
 
-    if(!isValidOperation) {
-        return res.status(400).json({ error: 'Invalid Updates' });
-    }
-    try {
-        const user = await User.findById(req.params.id);
-        if(!user) {
-            return res.status(404).json({ error: 'User not found' });
-        }
+  res.status(200).json({
+    success: true,
+    data: user
+  });
+});
 
-        if(user._id.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-            
-        }
-    }
-}
+// @desc    Create user
+// @route   POST /api/v1/users
+// @access  Private/Admin
+exports.createUser = asyncHandler(async (req, res, next) => {
+  const user = await User.create(req.body);
+
+  res.status(201).json({
+    success: true,
+    data: user
+  });
+});
+
+// @desc    Update user
+// @route   PUT /api/v1/users/:id
+// @access  Private/Admin
+exports.updateUser = asyncHandler(async (req, res, next) => {
+  const user = await User.findByIdAndUpdate(req.params.id, req.body, {
+    new: true,
+    runValidators: true
+  });
+
+  res.status(200).json({
+    success: true,
+    data: user
+  });
+});
+
+// @desc    Delete user
+// @route   DELETE /api/v1/users/:id
+// @access  Private/Admin
+exports.deleteUser = asyncHandler(async (req, res, next) => {
+  await User.findByIdAndDelete(req.params.id);
+
+  res.status(200).json({
+    success: true,
+    data: {}
+  });
+});

@@ -1,7 +1,8 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
-const UserSchema = new mongoose.Schema({
+const userSchema = new mongoose.Schema({
   name: {
     type: String,
     required: [true, 'Please add a name'],
@@ -15,9 +16,7 @@ const UserSchema = new mongoose.Schema({
     match: [
       /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/,
       'Please add a valid email'
-    ],
-    lowercase: true,
-    trim: true
+    ]
   },
   password: {
     type: String,
@@ -27,34 +26,23 @@ const UserSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['admin', 'project-manager', 'developer', 'qa'],
-    default: 'qa'
+    enum: ['user', 'developer', 'admin', 'project-manager'],
+    default: 'user'
   },
   avatar: {
     type: String,
     default: 'default.jpg'
   },
-  notificationPreferences: {
-    email: { type: Boolean, default: true },
-    inApp: { type: Boolean, default: true }
-  },
-  socketId: String,
-  isActive: {
-    type: Boolean,
-    default: true
-  },
-  lastActiveAt: Date,
+  resetPasswordToken: String,
+  resetPasswordExpire: Date,
   createdAt: {
     type: Date,
     default: Date.now
   }
-}, {
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
 });
 
 // Encrypt password using bcrypt
-UserSchema.pre('save', async function(next) {
+userSchema.pre('save', async function(next) {
   if (!this.isModified('password')) {
     next();
   }
@@ -63,45 +51,25 @@ UserSchema.pre('save', async function(next) {
   this.password = await bcrypt.hash(this.password, salt);
 });
 
-// Cascade delete bugs when user is deleted
-UserSchema.pre('remove', async function(next) {
-  await this.model('Bug').deleteMany({ reporter: this._id });
-  next();
-});
-
-// Reverse populate with virtuals
-UserSchema.virtual('reportedBugs', {
-  ref: 'Bug',
-  localField: '_id',
-  foreignField: 'reporter',
-  justOne: false
-});
-
-UserSchema.virtual('assignedBugs', {
-  ref: 'Bug',
-  localField: '_id',
-  foreignField: 'assignee',
-  justOne: false
-});
+// Sign JWT and return
+userSchema.methods.getSignedJwtToken = function() {
+  return jwt.sign({ id: this._id }, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRE
+  });
+};
 
 // Match user entered password to hashed password in database
-UserSchema.methods.matchPassword = async function(enteredPassword) {
+userSchema.methods.matchPassword = async function(enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
-// Generate email confirm token
-UserSchema.methods.getEmailConfirmToken = function() {
-  const confirmToken = crypto.randomBytes(20).toString('hex');
+// Cascade delete bugs when user is deleted
+userSchema.pre('remove', async function(next) {
+  await this.model('Bug').deleteMany({ createdBy: this._id });
+  await this.model('Comment').deleteMany({ user: this._id });
+  await this.model('History').deleteMany({ user: this._id });
+  await this.model('Notification').deleteMany({ user: this._id });
+  next();
+});
 
-  this.emailConfirmToken = crypto
-    .createHash('sha256')
-    .update(confirmToken)
-    .digest('hex');
-
-  this.emailConfirmExpire = Date.now() + 10 * 60 * 1000; // 10 minutes
-
-  return confirmToken;
-};
-
-module.exports = mongoose.model('User', UserSchema);
-
+module.exports = mongoose.model('User', userSchema);

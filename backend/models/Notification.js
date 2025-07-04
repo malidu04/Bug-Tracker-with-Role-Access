@@ -15,5 +15,25 @@ const notificationSchema = new mongoose.Schema({
     relatedEntity: {
         type: mongoose.Schema.Types.ObjectId,
         required: true
+    },
+    entityType: {
+        type: String,
+        required: true,
+        enum : ['bug', 'comment', 'project']
+    },
+    action: {
+        type: String,
+        required: true,
+        enum: ['create', 'update', 'delete', 'assign', 'mention']
+    },
+    read: {
+        type: Boolean,
+        default: false
+    },
+    createdAt: {
+        type: Date,
+        default: Date.now
     }
-})
+});
+
+module.exports = mongoose.model('Notification', notificationSchema);
