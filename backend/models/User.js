@@ -2,12 +2,12 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-const userSchema = new mongoose.Schema({
+const UserSchema = new mongoose.Schema({
   name: {
     type: String,
     required: [true, 'Please add a name'],
     trim: true,
-    maxlength: [50, 'Name cannot be more than 50 characters']
+    maxlength: [50, 'Name cannot be more than 50 characters'],
   },
   email: {
     type: String,
@@ -15,34 +15,28 @@ const userSchema = new mongoose.Schema({
     unique: true,
     match: [
       /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/,
-      'Please add a valid email'
-    ]
+      'Please add a valid email',
+    ],
   },
   password: {
     type: String,
     required: [true, 'Please add a password'],
     minlength: 6,
-    select: false
+    select: false,
   },
   role: {
     type: String,
-    enum: ['user', 'developer', 'admin', 'project-manager'],
-    default: 'user'
+    enum: ['admin', 'developer', 'tester', 'viewer'],
+    default: 'viewer',
   },
-  avatar: {
-    type: String,
-    default: 'default.jpg'
-  },
-  resetPasswordToken: String,
-  resetPasswordExpire: Date,
   createdAt: {
     type: Date,
-    default: Date.now
-  }
+    default: Date.now,
+  },
 });
 
 // Encrypt password using bcrypt
-userSchema.pre('save', async function(next) {
+UserSchema.pre('save', async function (next) {
   if (!this.isModified('password')) {
     next();
   }
@@ -52,24 +46,15 @@ userSchema.pre('save', async function(next) {
 });
 
 // Sign JWT and return
-userSchema.methods.getSignedJwtToken = function() {
+UserSchema.methods.getSignedJwtToken = function () {
   return jwt.sign({ id: this._id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE
+    expiresIn: process.env.JWT_EXPIRE,
   });
 };
 
 // Match user entered password to hashed password in database
-userSchema.methods.matchPassword = async function(enteredPassword) {
+UserSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
-// Cascade delete bugs when user is deleted
-userSchema.pre('remove', async function(next) {
-  await this.model('Bug').deleteMany({ createdBy: this._id });
-  await this.model('Comment').deleteMany({ user: this._id });
-  await this.model('History').deleteMany({ user: this._id });
-  await this.model('Notification').deleteMany({ user: this._id });
-  next();
-});
-
-module.exports = mongoose.model('User', userSchema);
+module.exports = mongoose.model('User', UserSchema);
