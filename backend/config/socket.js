@@ -2,20 +2,20 @@ const socketio = require('socket.io');
 
 let io;
 
-exports.init = server => {
+const initSocket = (server) => {
   io = socketio(server, {
     cors: {
       origin: process.env.CLIENT_URL,
-      methods: ['GET', 'POST']
-    }
+      methods: ['GET', 'POST'],
+    },
   });
 
-  io.on('connection', socket => {
+  io.on('connection', (socket) => {
     console.log('New client connected');
 
-    // Join user-specific room for notifications
-    socket.on('join', userId => {
-      socket.join(`user_${userId}`);
+    socket.on('join', (userId) => {
+      socket.join(userId);
+      console.log(`User ${userId} joined their room`);
     });
 
     socket.on('disconnect', () => {
@@ -26,9 +26,11 @@ exports.init = server => {
   return io;
 };
 
-exports.getIO = () => {
+const getIO = () => {
   if (!io) {
     throw new Error('Socket.io not initialized');
   }
   return io;
 };
+
+module.exports = { initSocket, getIO };
