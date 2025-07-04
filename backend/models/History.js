@@ -1,38 +1,32 @@
 const mongoose = require('mongoose');
 
-const historySchema = new mongoose.Schema({
+const HistorySchema = new mongoose.Schema({
   bug: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: mongoose.Schema.ObjectId,
     ref: 'Bug',
-    required: true
-  },
-  user: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  action: {
-    type: String,
     required: true,
-    enum: ['create', 'update', 'delete', 'status-change', 'assign']
   },
   field: {
     type: String,
-    trim: true
+    required: true,
+    enum: ['status', 'assignedTo', 'priority', 'title', 'description'],
   },
   oldValue: {
-    type: mongoose.Schema.Types.Mixed
+    type: String,
   },
   newValue: {
-    type: mongoose.Schema.Types.Mixed
-  }
-}, {
-  timestamps: { createdAt: true, updatedAt: false }, // Automatically adds createdAt
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+    type: String,
+    required: true,
+  },
+  changedBy: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'User',
+    required: true,
+  },
+  changedAt: {
+    type: Date,
+    default: Date.now,
+  },
 });
 
-// Optional index for performance on common queries
-historySchema.index({ bug: 1, createdAt: -1 });
-
-module.exports = mongoose.model('History', historySchema);
+module.exports = mongoose.model('History', HistorySchema);
