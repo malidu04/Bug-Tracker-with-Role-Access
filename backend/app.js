@@ -22,6 +22,8 @@ const app = express();
 // Body parser
 app.use(express.json());
 
+app.use(mongoSanitize());
+
 // Cookie parser
 app.use(cookieParser());
 

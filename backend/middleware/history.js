@@ -12,7 +12,7 @@ exports.trackChanges = async (req, res, next) => {
       ['title', 'description', 'status', 'priority', 'assignedTo'].forEach(
         (field) => {
           if (
-            JSON.stringify(originalBug[field]) !==
+            JSON.stringify(originalBug[field]) !== 
             JSON.stringify(updatedBug[field])
           ) {
             changes.push({
