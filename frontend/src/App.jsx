@@ -1,10 +1,17 @@
 import { Provider } from "react-redux";
-import Navbar from "./components/Navbar"
+import store from "./redux/store"; // Don't forget to import your store!
+import Navbar from "./components/Navbar";
+import Login from "./pages/Login";
 
 function App() {
   return (
-      <Navbar />
-  )
+    <Provider store={store}>
+      <>
+        <Navbar />
+        <Login />
+      </>
+    </Provider>
+  );
 }
 
 export default App;
