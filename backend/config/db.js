@@ -3,15 +3,10 @@ const { MONGO_URI } = require('./env');
 
 const connectDB = async () => {
   try {
-    await mongoose.connect(MONGO_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      useCreateIndex: true,
-      useFindAndModify: false
-    });
-    console.log('MongoDB Connected...');
+    await mongoose.connect(MONGO_URI);
+    console.log('MongoDB Connected...'.cyan.bold);
   } catch (err) {
-    console.error('Database connection error:', err.message);
+    console.error('Database connection error:'.red, err.message);
     process.exit(1);
   }
 };

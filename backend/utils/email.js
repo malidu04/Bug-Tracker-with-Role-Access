@@ -1,27 +1,26 @@
 const nodemailer = require('nodemailer');
-const ErrorResponse = require('./ErrorResponse');
+const ErrorResponse = require('./errorHandler');
 
 const sendEmail = async (options) => {
-  // 1) Create a transporter
+  // Create a transporter
   const transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,
-    port: process.env.EMAIL_PORT,
+    host: process.env.SMTP_HOST,
+    port: process.env.SMTP_PORT,
     auth: {
-      user: process.env.EMAIL_USERNAME,
-      pass: process.env.EMAIL_PASSWORD,
-    },
+      user: process.env.SMTP_EMAIL,
+      pass: process.env.SMTP_PASSWORD
+    }
   });
 
-  // 2) Define the email options
+  // Define email options
   const mailOptions = {
-    from: 'Bug Tracker <noreply@bugtracker.com>',
+    from: `${process.env.FROM_NAME} <${process.env.FROM_EMAIL}>`,
     to: options.email,
     subject: options.subject,
-    text: options.message,
-    // html: options.html (optional)
+    text: options.message
   };
 
-  // 3) Actually send the email
+  // Send email
   await transporter.sendMail(mailOptions);
 };
 
