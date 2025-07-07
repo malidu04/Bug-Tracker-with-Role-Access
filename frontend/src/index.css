@@ -1,68 +1,56 @@
-:root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* Custom styles */
+.badge {
+  @apply inline-block px-2 py-1 rounded text-xs font-medium uppercase;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
+.badge-open {
+  @apply bg-blue-100 text-blue-800;
 }
 
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
+.badge-in_progress {
+  @apply bg-yellow-100 text-yellow-800;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+.badge-resolved {
+  @apply bg-green-100 text-green-800;
 }
 
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+.badge-closed {
+  @apply bg-gray-100 text-gray-800;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+.badge-not_started {
+  @apply bg-gray-100 text-gray-800;
+}
+
+.badge-completed {
+  @apply bg-green-100 text-green-800;
+}
+
+.badge-low {
+  @apply bg-green-100 text-green-800;
+}
+
+.badge-medium {
+  @apply bg-yellow-100 text-yellow-800;
+}
+
+.badge-high {
+  @apply bg-red-100 text-red-800;
+}
+
+.badge-critical {
+  @apply bg-purple-100 text-purple-800;
+}
+
+.modal {
+  @apply fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white p-6 rounded max-w-md w-full;
+}
+
+.overlay {
+  @apply fixed inset-0 bg-black bg-opacity-50 z-50;
 }
